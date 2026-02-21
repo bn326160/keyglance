@@ -39,6 +39,13 @@ body {
   box-shadow: none;
 }
 
+.glass.idle .key-cap.active {
+  transform: none !important;
+  color: inherit !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
 .key-cap.active {
   @apply scale-95 bg-blue-500 text-white border-blue-600 shadow-none;
 }

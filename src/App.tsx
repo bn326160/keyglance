@@ -14,18 +14,39 @@ const IDLE_TIMEOUT = 2000;
 
 const STORAGE_KEY = 'keyglance-compact';
 
+// Only these 30 layout keys should make the keyboard fully visible
+const LAYOUT_KEYS = new Set([
+  'Q','W','F','P','B','J','L','U','Y',';',
+  'A','R','S','T','G','M','N','E','I','O',
+  'Z','X','C','D','V','K','H',',','.','/'
+]);
+
 export default function App() {
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [compact, setCompact] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true');
   const [idle, setIdle] = useState(false);
+  const idleRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const resetIdleTimer = () => {
     setIdle(false);
+    idleRef.current = false;
     clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => setIdle(true), IDLE_TIMEOUT);
+    idleTimer.current = setTimeout(() => {
+      setIdle(true);
+      idleRef.current = true;
+    }, IDLE_TIMEOUT);
   };
+
+  // Start idle timer on mount so keyboard goes transparent after 2s
+  useEffect(() => {
+    idleTimer.current = setTimeout(() => {
+      setIdle(true);
+      idleRef.current = true;
+    }, IDLE_TIMEOUT);
+    return () => clearTimeout(idleTimer.current);
+  }, []);
 
   // Restore window size on mount if compact was saved
   useEffect(() => {
@@ -72,12 +93,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const isLayoutKey = (key: string) =>
+      LAYOUT_KEYS.has(key.toUpperCase()) || LAYOUT_KEYS.has(key);
+
+    const THUMB_KEYS = new Set(['Backspace', 'Meta', 'Enter', ' ']);
+
     const unlistenDown = listen("global-keydown", (event) => {
       const rawKey = event.payload as string;
       const key = rawKey.replace("Key", "");
-      setActiveKey(key);
       if (key.includes("Shift")) setIsShiftPressed(true);
-      resetIdleTimer();
+      if (isLayoutKey(key)) {
+        setActiveKey(key);
+        resetIdleTimer();
+      } else if (THUMB_KEYS.has(key) && !idleRef.current) {
+        setActiveKey(key);
+      }
     });
 
     const unlistenUp = listen("global-keyup", (event) => {
@@ -86,7 +116,9 @@ export default function App() {
       if (key === "Shift") {
         setIsShiftPressed(false);
       }
-      setActiveKey(undefined);
+      if (isLayoutKey(key) || THUMB_KEYS.has(key)) {
+        setActiveKey(undefined);
+      }
     });
 
     return () => {
