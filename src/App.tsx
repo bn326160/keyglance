@@ -19,7 +19,7 @@ export default function App() {
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [compact, setCompact] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true');
   const [idle, setIdle] = useState(false);
-  const idleTimer = useRef<ReturnType<typeof setTimeout>>();
+  const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const resetIdleTimer = () => {
     setIdle(false);
@@ -34,6 +34,36 @@ export default function App() {
         getCurrentWindow().setSize(new LogicalSize(SIZES.compact.width, SIZES.compact.height));
       });
     }
+  }, []);
+
+  // Track focused text input and move window above it
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
+
+  useEffect(() => {
+    const unlistenInput = listen<{ x: number; y: number; width: number; height: number }>(
+      "focused-input",
+      async (event) => {
+        const { x, y, width } = event.payload;
+        const { LogicalPosition } = await import("@tauri-apps/api/dpi");
+        const win = getCurrentWindow();
+        const size = compactRef.current ? SIZES.compact : SIZES.normal;
+
+        // Center the keyboard above the input field, with a small gap
+        const gap = 8;
+        const newX = x + width / 2 - size.width / 2;
+        const newY = y - size.height - gap;
+
+        await win.setPosition(new LogicalPosition(
+          Math.max(0, Math.round(newX)),
+          Math.max(0, Math.round(newY)),
+        ));
+      },
+    );
+
+    return () => {
+      unlistenInput.then((f) => f());
+    };
   }, []);
 
   useEffect(() => {
