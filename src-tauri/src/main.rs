@@ -7,6 +7,7 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
+use tauri_plugin_autostart::ManagerExt;
 use serde::Serialize;
 
 fn config_path(app: &tauri::AppHandle) -> PathBuf {
@@ -641,6 +642,7 @@ static DISMISSED: AtomicBool = AtomicBool::new(false);
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .setup(|app| {
             // Load persisted setting
             let saved = load_follow_input(app.handle());
@@ -651,6 +653,10 @@ fn main() {
             #[cfg(target_os = "macos")]
             HIDE_DOCK_REQUESTED.store(hide_dock, Ordering::Relaxed);
 
+            // Check current autostart state
+            let autostart_manager = app.autolaunch();
+            let launch_at_login = autostart_manager.is_enabled().unwrap_or(false);
+
             // --- System tray with menu ---
             let follow_item = CheckMenuItemBuilder::new("Follow Text Input")
                 .id("follow-input")
@@ -660,6 +666,11 @@ fn main() {
             let hide_dock_item = CheckMenuItemBuilder::new("Hide Dock Icon")
                 .id("hide-dock-icon")
                 .checked(hide_dock)
+                .build(app)?;
+
+            let launch_item = CheckMenuItemBuilder::new("Launch at Login")
+                .id("launch-at-login")
+                .checked(launch_at_login)
                 .build(app)?;
 
             let dismiss_item = MenuItemBuilder::new("Dismiss Until Input")
@@ -674,6 +685,7 @@ fn main() {
             let menu = MenuBuilder::new(app)
                 .item(&follow_item)
                 .item(&hide_dock_item)
+                .item(&launch_item)
                 .item(&dismiss_item)
                 .separator()
                 .item(&quit_item)
@@ -705,6 +717,15 @@ fn main() {
                             DISMISSED.store(true, Ordering::Relaxed);
                             if let Some(win) = tray_handle.get_webview_window("main") {
                                 let _ = win.hide();
+                            }
+                        }
+                        "launch-at-login" => {
+                            let mgr = tray_handle.autolaunch();
+                            let enabled = mgr.is_enabled().unwrap_or(false);
+                            if enabled {
+                                let _ = mgr.disable();
+                            } else {
+                                let _ = mgr.enable();
                             }
                         }
                         "quit" => {
