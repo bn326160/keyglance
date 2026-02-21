@@ -49,8 +49,8 @@ export default function App() {
         const win = getCurrentWindow();
         const size = compactRef.current ? SIZES.compact : SIZES.normal;
 
-        // Center the keyboard above the input field, with a small gap
-        const gap = 8;
+        // Center the keyboard above the input field, with a gap
+        const gap = 40;
         const newX = x + width / 2 - size.width / 2;
         const newY = y - size.height - gap;
 
