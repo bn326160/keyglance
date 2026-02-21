@@ -44,7 +44,7 @@ export default function App() {
     const unlistenInput = listen<{ x: number; y: number; width: number; height: number }>(
       "focused-input",
       async (event) => {
-        const { x, y, width } = event.payload;
+        const { x, y, width, height } = event.payload;
         const { LogicalPosition } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
         const size = compactRef.current ? SIZES.compact : SIZES.normal;
@@ -52,7 +52,12 @@ export default function App() {
         // Center the keyboard above the input field, with a gap
         const gap = 40;
         const newX = x + width / 2 - size.width / 2;
-        const newY = y - size.height - gap;
+
+        // Place above the input, but if not enough room, go below it
+        let newY = y - size.height - gap;
+        if (newY < 25) {
+          newY = y + height + gap;
+        }
 
         await win.setPosition(new LogicalPosition(
           Math.max(0, Math.round(newX)),
