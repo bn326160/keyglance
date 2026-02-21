@@ -9,9 +9,6 @@ export interface KeyboardLayout {
   shiftedRight: string[][];
 }
 
-// Ordered list of available layouts for the UI
-export const LAYOUT_IDS: LayoutId[] = ['qwerty', 'azerty', 'qwertz', 'dvorak', 'colemak', 'colemak-dh'];
-
 // Finger assignment based on column position (same for all split layouts)
 const LEFT_FINGERS = ['left-pinky', 'left-ring', 'left-middle', 'left-index', 'left-index'];
 const RIGHT_FINGERS = ['right-index', 'right-index', 'right-middle', 'right-ring', 'right-pinky'];

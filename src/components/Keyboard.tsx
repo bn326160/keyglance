@@ -8,54 +8,81 @@ interface KeyboardProps {
   activeKey?: string;
   isShiftPressed?: boolean;
   compact?: boolean;
+  matrix?: boolean;
 }
 
-export const Keyboard: React.FC<KeyboardProps> = ({ layout, activeKey, isShiftPressed, compact }) => {
+export const Keyboard: React.FC<KeyboardProps> = ({ layout, activeKey, isShiftPressed, compact, matrix = true }) => {
   const fingerMap = useMemo(() => buildFingerMap(layout), [layout]);
 
-  const renderHalf = (side: 'left' | 'right') => {
-    const rows = isShiftPressed
+  const keySize = compact ? 'w-7 h-7 text-xs' : 'w-11 h-11 text-base';
+  const gap = compact ? 'gap-1' : 'gap-1.5';
+
+  const renderKey = (key: string, rowIndex: number, colIndex: number, side: 'left' | 'right') => {
+    const isActive = activeKey?.toUpperCase() === key || activeKey === key;
+    const isHomeRow = rowIndex === 1;
+    // Homing bump: left cols 0-3, right cols 1-4
+    const isHomingKey = isHomeRow && (side === 'left' ? colIndex <= 3 : colIndex >= 1);
+
+    const finger = fingerMap[key.toUpperCase()] || fingerMap[key];
+    const fingerColorClass = FINGER_COLORS[finger] || '';
+
+    return (
+      <div
+        key={`${side}-${colIndex}-${key}`}
+        className={cn(
+          'key-cap relative',
+          keySize,
+          !isActive && fingerColorClass,
+          isActive && 'active',
+          isHomeRow && 'home-row',
+        )}
+      >
+        {key}
+        {isHomingKey && (
+          <div
+            className={cn(
+              'absolute rounded-full bg-current opacity-30',
+              compact ? 'bottom-1 w-3 h-0.5' : 'bottom-1.5 w-4 h-0.5',
+            )}
+          />
+        )}
+      </div>
+    );
+  };
+
+  const getRows = (side: 'left' | 'right') =>
+    isShiftPressed
       ? (side === 'left' ? layout.shiftedLeft : layout.shiftedRight)
       : layout[side];
-    const keySize = compact ? 'w-7 h-7 text-xs' : 'w-11 h-11 text-base';
-    const gap = compact ? 'gap-1' : 'gap-1.5';
 
+  // --- Flat (non-matrix) layout: single block, no split gap, no thumb keys ---
+  if (!matrix) {
+    const leftRows = getRows('left');
+    const rightRows = getRows('right');
+
+    return (
+      <div className={cn('flex flex-col items-center select-none', gap, compact ? 'p-1' : 'p-2')}>
+        {leftRows.map((leftRow, rowIndex) => {
+          const rightRow = rightRows[rowIndex];
+          return (
+            <div key={rowIndex} className={cn('flex', gap)}>
+              {leftRow.map((key, ci) => renderKey(key, rowIndex, ci, 'left'))}
+              {rightRow.map((key, ci) => renderKey(key, rowIndex, ci, 'right'))}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // --- Matrix (split) layout: two halves with gap + thumb keys ---
+  const renderHalf = (side: 'left' | 'right') => {
+    const rows = getRows(side);
     return (
       <div className={cn('flex flex-col', gap)}>
         {rows.map((row, rowIndex) => (
           <div key={rowIndex} className={cn('flex', gap)}>
-            {row.map((key, colIndex) => {
-              const isActive = activeKey?.toUpperCase() === key || activeKey === key;
-              const isHomeRow = rowIndex === 1;
-              // Homing bump on columns 0-3 of the home row (skip outermost col 4)
-              const isHomingKey = isHomeRow && colIndex <= 3;
-
-              const finger = fingerMap[key.toUpperCase()] || fingerMap[key];
-              const fingerColorClass = FINGER_COLORS[finger] || '';
-
-              return (
-                <div
-                  key={`${colIndex}-${key}`}
-                  className={cn(
-                    'key-cap relative',
-                    keySize,
-                    !isActive && fingerColorClass,
-                    isActive && 'active',
-                    isHomeRow && 'home-row',
-                  )}
-                >
-                  {key}
-                  {isHomingKey && (
-                    <div
-                      className={cn(
-                        'absolute rounded-full bg-current opacity-30',
-                        compact ? 'bottom-1 w-3 h-0.5' : 'bottom-1.5 w-4 h-0.5',
-                      )}
-                    />
-                  )}
-                </div>
-              );
-            })}
+            {row.map((key, ci) => renderKey(key, rowIndex, ci, side))}
           </div>
         ))}
       </div>

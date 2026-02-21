@@ -3,18 +3,21 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Keyboard } from "./components/Keyboard";
 import { motion } from "framer-motion";
-import { Minimize2, Maximize2, ChevronDown } from "lucide-react";
-import { LAYOUTS, LAYOUT_IDS, getLayoutKeys, type LayoutId, type KeyboardLayout } from "./layouts";
+import { Minimize2, Maximize2 } from "lucide-react";
+import { LAYOUTS, getLayoutKeys, type LayoutId, type KeyboardLayout } from "./layouts";
 
-const SIZES = {
-  normal: { width: 650, height: 350 },
-  compact: { width: 440, height: 220 },
-};
+function getWindowSize(compact: boolean, matrix: boolean) {
+  if (compact && matrix) return { width: 440, height: 220 };
+  if (compact && !matrix) return { width: 380, height: 160 };
+  if (!compact && matrix) return { width: 650, height: 350 };
+  return { width: 560, height: 240 };
+}
 
 const IDLE_TIMEOUT = 2000;
 
 const STORAGE_KEY = 'keyglance-compact';
 const LAYOUT_STORAGE_KEY = 'keyglance-layout';
+const MATRIX_STORAGE_KEY = 'keyglance-matrix';
 
 export default function App() {
   const [activeKey, setActiveKey] = useState<string | undefined>();
@@ -24,7 +27,10 @@ export default function App() {
     const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
     return (saved && saved in LAYOUTS) ? saved as LayoutId : 'colemak-dh';
   });
-  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const [matrix, setMatrix] = useState(() => {
+    const saved = localStorage.getItem(MATRIX_STORAGE_KEY);
+    return saved === null ? true : saved === 'true';
+  });
   const [idle, setIdle] = useState(false);
   const idleRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -51,18 +57,19 @@ export default function App() {
     return () => clearTimeout(idleTimer.current);
   }, []);
 
-  // Restore window size on mount if compact was saved
+  // Restore window size on mount
   useEffect(() => {
-    if (compact) {
-      import("@tauri-apps/api/dpi").then(({ LogicalSize }) => {
-        getCurrentWindow().setSize(new LogicalSize(SIZES.compact.width, SIZES.compact.height));
-      });
-    }
+    const size = getWindowSize(compact, matrix);
+    import("@tauri-apps/api/dpi").then(({ LogicalSize }) => {
+      getCurrentWindow().setSize(new LogicalSize(size.width, size.height));
+    });
   }, []);
 
   // Track focused text input and move window above it
   const compactRef = useRef(compact);
   compactRef.current = compact;
+  const matrixRef = useRef(matrix);
+  matrixRef.current = matrix;
 
   useEffect(() => {
     const unlistenInput = listen<{ x: number; y: number; width: number; height: number }>(
@@ -71,7 +78,7 @@ export default function App() {
         const { x, y, width, height } = event.payload;
         const { LogicalPosition } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        const size = compactRef.current ? SIZES.compact : SIZES.normal;
+        const size = getWindowSize(compactRef.current, matrixRef.current);
 
         // Center the keyboard above the input field, with a gap
         const gap = 40;
@@ -131,19 +138,38 @@ export default function App() {
     };
   }, [layoutKeys]);
 
+  // Listen for tray menu events (layout change, matrix toggle)
+  useEffect(() => {
+    const unlistenLayout = listen<string>("tray-change-layout", (event) => {
+      const id = event.payload as LayoutId;
+      if (id in LAYOUTS) {
+        setLayoutId(id);
+        localStorage.setItem(LAYOUT_STORAGE_KEY, id);
+      }
+    });
+
+    const unlistenMatrix = listen<boolean>("tray-toggle-matrix", async (event) => {
+      const newVal = event.payload;
+      setMatrix(newVal);
+      localStorage.setItem(MATRIX_STORAGE_KEY, String(newVal));
+      const size = getWindowSize(compactRef.current, newVal);
+      const win = getCurrentWindow();
+      await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
+    });
+
+    return () => {
+      unlistenLayout.then((f) => f());
+      unlistenMatrix.then((f) => f());
+    };
+  }, []);
+
   const toggleCompact = async () => {
     const next = !compact;
     setCompact(next);
     localStorage.setItem(STORAGE_KEY, String(next));
-    const size = next ? SIZES.compact : SIZES.normal;
+    const size = getWindowSize(next, matrix);
     const win = getCurrentWindow();
     await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
-  };
-
-  const changeLayout = (id: LayoutId) => {
-    setLayoutId(id);
-    localStorage.setItem(LAYOUT_STORAGE_KEY, id);
-    setShowLayoutMenu(false);
   };
 
   return (
@@ -172,38 +198,16 @@ export default function App() {
           {compact ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
         </button>
 
-        {/* Layout name with dropdown selector */}
-        <div className="relative z-10">
-          <button
-            onClick={() => setShowLayoutMenu((v) => !v)}
-            className={`mx-auto flex items-center gap-1 font-black uppercase tracking-[0.2em] text-black/20 hover:text-black/40 transition-colors ${
-              compact ? "text-[8px] mb-3" : "text-[10px] mb-6"
-            }`}
-          >
-            {layout.name}
-            <ChevronDown size={compact ? 8 : 10} />
-          </button>
-
-          {showLayoutMenu && (
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg border border-black/10 py-1 min-w-[140px]">
-              {LAYOUT_IDS.map((id) => (
-                <button
-                  key={id}
-                  onClick={() => changeLayout(id)}
-                  className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${
-                    id === layoutId
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-black/60 hover:bg-black/5 hover:text-black/80"
-                  }`}
-                >
-                  {LAYOUTS[id].name}
-                </button>
-              ))}
-            </div>
-          )}
+        <div
+          data-tauri-drag-region
+          className={`font-black uppercase tracking-[0.2em] text-black/20 text-center ${
+            compact ? "text-[8px] mb-3" : "text-[10px] mb-6"
+          }`}
+        >
+          {layout.name}
         </div>
 
-        <Keyboard layout={layout} activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} />
+        <Keyboard layout={layout} activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} matrix={matrix} />
       </motion.div>
     </main>
   );
