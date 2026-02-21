@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Keyboard } from "./components/Keyboard";
 import { motion } from "framer-motion";
-import { Minimize2, Maximize2 } from "lucide-react";
+import { Minimize2, Maximize2, ChevronDown } from "lucide-react";
+import { LAYOUTS, LAYOUT_IDS, getLayoutKeys, type LayoutId, type KeyboardLayout } from "./layouts";
 
 const SIZES = {
   normal: { width: 650, height: 350 },
@@ -13,21 +14,23 @@ const SIZES = {
 const IDLE_TIMEOUT = 2000;
 
 const STORAGE_KEY = 'keyglance-compact';
-
-// Only these 30 layout keys should make the keyboard fully visible
-const LAYOUT_KEYS = new Set([
-  'Q','W','F','P','B','J','L','U','Y',';',
-  'A','R','S','T','G','M','N','E','I','O',
-  'Z','X','C','D','V','K','H',',','.','/'
-]);
+const LAYOUT_STORAGE_KEY = 'keyglance-layout';
 
 export default function App() {
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [compact, setCompact] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true');
+  const [layoutId, setLayoutId] = useState<LayoutId>(() => {
+    const saved = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    return (saved && saved in LAYOUTS) ? saved as LayoutId : 'colemak-dh';
+  });
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
   const [idle, setIdle] = useState(false);
   const idleRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const layout: KeyboardLayout = LAYOUTS[layoutId];
+  const layoutKeys = useMemo(() => getLayoutKeys(layout), [layout]);
 
   const resetIdleTimer = () => {
     setIdle(false);
@@ -94,7 +97,7 @@ export default function App() {
 
   useEffect(() => {
     const isLayoutKey = (key: string) =>
-      LAYOUT_KEYS.has(key.toUpperCase()) || LAYOUT_KEYS.has(key);
+      layoutKeys.has(key.toUpperCase()) || layoutKeys.has(key);
 
     const THUMB_KEYS = new Set(['Backspace', 'Meta', 'Enter', ' ']);
 
@@ -126,7 +129,7 @@ export default function App() {
       unlistenUp.then((f) => f());
       clearTimeout(idleTimer.current);
     };
-  }, []);
+  }, [layoutKeys]);
 
   const toggleCompact = async () => {
     const next = !compact;
@@ -135,6 +138,12 @@ export default function App() {
     const size = next ? SIZES.compact : SIZES.normal;
     const win = getCurrentWindow();
     await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
+  };
+
+  const changeLayout = (id: LayoutId) => {
+    setLayoutId(id);
+    localStorage.setItem(LAYOUT_STORAGE_KEY, id);
+    setShowLayoutMenu(false);
   };
 
   return (
@@ -163,15 +172,38 @@ export default function App() {
           {compact ? <Maximize2 size={12} /> : <Minimize2 size={12} />}
         </button>
 
-        <div
-          data-tauri-drag-region
-          className={`font-black uppercase tracking-[0.2em] text-black/20 text-center ${
-            compact ? "text-[8px] mb-3" : "text-[10px] mb-6"
-          }`}
-        >
-          Colemak-DH Matrix
+        {/* Layout name with dropdown selector */}
+        <div className="relative z-10">
+          <button
+            onClick={() => setShowLayoutMenu((v) => !v)}
+            className={`mx-auto flex items-center gap-1 font-black uppercase tracking-[0.2em] text-black/20 hover:text-black/40 transition-colors ${
+              compact ? "text-[8px] mb-3" : "text-[10px] mb-6"
+            }`}
+          >
+            {layout.name}
+            <ChevronDown size={compact ? 8 : 10} />
+          </button>
+
+          {showLayoutMenu && (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg border border-black/10 py-1 min-w-[140px]">
+              {LAYOUT_IDS.map((id) => (
+                <button
+                  key={id}
+                  onClick={() => changeLayout(id)}
+                  className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${
+                    id === layoutId
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-black/60 hover:bg-black/5 hover:text-black/80"
+                  }`}
+                >
+                  {LAYOUTS[id].name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <Keyboard activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} />
+
+        <Keyboard layout={layout} activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} />
       </motion.div>
     </main>
   );

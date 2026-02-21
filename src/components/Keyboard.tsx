@@ -1,16 +1,22 @@
-import React from 'react';
-import { COLEMAK_DH_SPLIT, COLEMAK_DH_SHIFTED, KEY_FINGER_MAP, FINGER_COLORS } from '../constants';
+import React, { useMemo } from 'react';
+import { KeyboardLayout, buildFingerMap } from '../layouts';
+import { FINGER_COLORS } from '../constants';
 import { cn } from '../lib/utils';
 
 interface KeyboardProps {
+  layout: KeyboardLayout;
   activeKey?: string;
   isShiftPressed?: boolean;
   compact?: boolean;
 }
 
-export const Keyboard: React.FC<KeyboardProps> = ({ activeKey, isShiftPressed, compact }) => {
+export const Keyboard: React.FC<KeyboardProps> = ({ layout, activeKey, isShiftPressed, compact }) => {
+  const fingerMap = useMemo(() => buildFingerMap(layout), [layout]);
+
   const renderHalf = (side: 'left' | 'right') => {
-    const rows = isShiftPressed ? COLEMAK_DH_SHIFTED[side] : COLEMAK_DH_SPLIT[side];
+    const rows = isShiftPressed
+      ? (side === 'left' ? layout.shiftedLeft : layout.shiftedRight)
+      : layout[side];
     const keySize = compact ? 'w-7 h-7 text-xs' : 'w-11 h-11 text-base';
     const gap = compact ? 'gap-1' : 'gap-1.5';
 
@@ -18,17 +24,18 @@ export const Keyboard: React.FC<KeyboardProps> = ({ activeKey, isShiftPressed, c
       <div className={cn('flex flex-col', gap)}>
         {rows.map((row, rowIndex) => (
           <div key={rowIndex} className={cn('flex', gap)}>
-            {row.map((key) => {
+            {row.map((key, colIndex) => {
               const isActive = activeKey?.toUpperCase() === key || activeKey === key;
               const isHomeRow = rowIndex === 1;
-              const isHomingKey = isHomeRow && ['A', 'R', 'S', 'T', 'M', 'N', 'E', 'I'].includes(key);
+              // Homing bump on columns 0-3 of the home row (skip outermost col 4)
+              const isHomingKey = isHomeRow && colIndex <= 3;
 
-              const finger = KEY_FINGER_MAP[key.toUpperCase()] || KEY_FINGER_MAP[key];
+              const finger = fingerMap[key.toUpperCase()] || fingerMap[key];
               const fingerColorClass = FINGER_COLORS[finger] || '';
 
               return (
                 <div
-                  key={key}
+                  key={`${colIndex}-${key}`}
                   className={cn(
                     'key-cap relative',
                     keySize,

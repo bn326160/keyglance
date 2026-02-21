@@ -1,29 +1,3 @@
-export const COLEMAK_DH_SPLIT = {
-  left: [
-    ['Q', 'W', 'F', 'P', 'B'],
-    ['A', 'R', 'S', 'T', 'G'],
-    ['Z', 'X', 'C', 'D', 'V'],
-  ],
-  right: [
-    ['J', 'L', 'U', 'Y', ';'],
-    ['M', 'N', 'E', 'I', 'O'],
-    ['K', 'H', ',', '.', '/'],
-  ]
-};
-
-export const COLEMAK_DH_SHIFTED = {
-  left: [
-    ['Q', 'W', 'F', 'P', 'B'],
-    ['A', 'R', 'S', 'T', 'G'],
-    ['Z', 'X', 'C', 'D', 'V'],
-  ],
-  right: [
-    ['J', 'L', 'U', 'Y', ':'],
-    ['M', 'N', 'E', 'I', 'O'],
-    ['K', 'H', '<', '>', '?'],
-  ]
-};
-
 // Standard QWERTY-based shift mapping for the non-alpha keys in our matrix
 export const SHIFT_MAP: Record<string, string> = {
   ';': ':',
@@ -46,18 +20,6 @@ export const FINGER_COLORS: Record<string, string> = {
   'thumb': 'bg-slate-100 border-slate-200 text-slate-700',
 };
 
-export const KEY_FINGER_MAP: Record<string, string> = {
-  'Q': 'left-pinky', 'A': 'left-pinky', 'Z': 'left-pinky',
-  'W': 'left-ring', 'R': 'left-ring', 'X': 'left-ring',
-  'F': 'left-middle', 'S': 'left-middle', 'C': 'left-middle',
-  'P': 'left-index', 'T': 'left-index', 'D': 'left-index',
-  'B': 'left-index', 'G': 'left-index', 'V': 'left-index',
-  'J': 'right-index', 'M': 'right-index', 'K': 'right-index',
-  'L': 'right-index', 'N': 'right-index', 'H': 'right-index',
-  'U': 'right-middle', 'E': 'right-middle', ',': 'right-middle',
-  'Y': 'right-ring', 'I': 'right-ring', '.': 'right-ring',
-  ';': 'right-pinky', 'O': 'right-pinky', '/': 'right-pinky',
-};
 
 export const PRACTICE_TEXTS = [
   "The quick brown fox jumps over the lazy dog.",
