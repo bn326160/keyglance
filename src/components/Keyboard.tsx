@@ -30,7 +30,7 @@ export const Keyboard: React.FC<KeyboardProps> = ({ activeKey, isShiftPressed, c
                 <div
                   key={key}
                   className={cn(
-                    'key-cap relative transition-colors duration-200',
+                    'key-cap relative',
                     keySize,
                     !isActive && fingerColorClass,
                     isActive && 'active',

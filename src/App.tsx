@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Keyboard } from "./components/Keyboard";
@@ -10,10 +10,20 @@ const SIZES = {
   compact: { width: 440, height: 220 },
 };
 
+const IDLE_TIMEOUT = 2000;
+
 export default function App() {
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [compact, setCompact] = useState(false);
+  const [idle, setIdle] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const resetIdleTimer = () => {
+    setIdle(false);
+    clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setIdle(true), IDLE_TIMEOUT);
+  };
 
   useEffect(() => {
     const unlistenDown = listen("global-keydown", (event) => {
@@ -21,6 +31,7 @@ export default function App() {
       const key = rawKey.replace("Key", "");
       setActiveKey(key);
       if (key.includes("Shift")) setIsShiftPressed(true);
+      resetIdleTimer();
     });
 
     const unlistenUp = listen("global-keyup", (event) => {
@@ -35,6 +46,7 @@ export default function App() {
     return () => {
       unlistenDown.then((f) => f());
       unlistenUp.then((f) => f());
+      clearTimeout(idleTimer.current);
     };
   }, []);
 
@@ -52,6 +64,8 @@ export default function App() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className={`glass rounded-3xl relative ${
+          idle ? "idle" : ""
+        } ${
           compact ? "p-4" : "p-8"
         }`}
       >
