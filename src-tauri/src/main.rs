@@ -337,41 +337,23 @@ unsafe fn frontmost_app_pid() -> Option<i32> {
     Some(pid)
 }
 
-/// Track which PIDs we've already enabled AXEnhancedUserInterface for.
-static mut ENHANCED_PIDS: [i32; 32] = [0; 32];
-static mut ENHANCED_COUNT: usize = 0;
-
-unsafe fn ensure_enhanced_ui(pid: i32) {
-    // Check if already enabled
-    for i in 0..ENHANCED_COUNT {
-        if ENHANCED_PIDS[i] == pid { return; }
-    }
-    // Enable it
-    let app_el = AXUIElementCreateApplication(pid);
-    if !app_el.is_null() {
-        let enhanced = cf_str(b"AXEnhancedUserInterface\0");
-        let err = AXUIElementSetAttributeValue(app_el, enhanced, kCFBooleanTrue);
-        CFRelease(enhanced);
-        CFRelease(app_el as CFTypeRef);
-        eprintln!("keyglance: set AXEnhancedUserInterface for pid={} err={}", pid, err);
-    }
-    // Remember it
-    if ENHANCED_COUNT < 32 {
-        ENHANCED_PIDS[ENHANCED_COUNT] = pid;
-        ENHANCED_COUNT += 1;
-    }
-}
-
 /// Try to get the focused element from a specific app.
 /// Falls back to system-wide if the app query fails.
 unsafe fn get_focused_element() -> Option<CFTypeRef> {
     // Try app-specific first (works better for browsers / Electron)
     if let Some(pid) = frontmost_app_pid() {
-        // Enable enhanced UI for Chromium/Electron apps
-        ensure_enhanced_ui(pid);
-
         let app_el = AXUIElementCreateApplication(pid);
         if !app_el.is_null() {
+            // Enable enhanced/manual accessibility for Chromium/Electron apps.
+            // Different Electron versions respond to different attributes.
+            let enhanced = cf_str(b"AXEnhancedUserInterface\0");
+            AXUIElementSetAttributeValue(app_el, enhanced, kCFBooleanTrue);
+            CFRelease(enhanced);
+
+            let manual = cf_str(b"AXManualAccessibility\0");
+            AXUIElementSetAttributeValue(app_el, manual, kCFBooleanTrue);
+            CFRelease(manual);
+
             let attr = cf_str(b"AXFocusedUIElement\0");
             let mut focused: CFTypeRef = std::ptr::null();
             let err = AXUIElementCopyAttributeValue(app_el, attr, &mut focused);
@@ -419,56 +401,51 @@ unsafe fn get_focused_element() -> Option<CFTypeRef> {
 
 /// Check if the element is an editable text input using multiple strategies.
 unsafe fn is_text_input(el: AXUIElementRef) -> bool {
-    #[link(name = "CoreFoundation", kind = "framework")]
-    extern "C" {
-        fn CFEqual(a: CFTypeRef, b: CFTypeRef) -> bool;
-    }
-
-    // Reject known non-input roles (terminals, scroll areas, web areas, groups)
     let role = ax_string_attr(el, b"AXRole\0").unwrap_or_default();
     let subrole = ax_string_attr(el, b"AXSubrole\0").unwrap_or_default();
-    match role.as_str() {
-        "AXScrollArea" | "AXGroup" | "AXWebArea" | "AXTable"
-        | "AXList" | "AXOutline" | "AXSplitGroup" | "AXTabGroup"
-        | "AXToolbar" | "AXMenuBar" | "AXMenu" | "AXWindow"
-        | "AXApplication" | "AXStaticText" | "AXImage" | "AXButton" => return false,
-        _ => {}
-    }
-    // iTerm / Terminal.app
+
+    // Reject terminals
     if subrole == "AXTerminalArea" || role == "AXTerminalArea" {
         return false;
     }
 
-    // Strategy 1: Check role directly against known text input roles
-    let attr_role = cf_str(b"AXRole\0");
-    let mut role_ref: CFTypeRef = std::ptr::null();
-    let err = AXUIElementCopyAttributeValue(el, attr_role, &mut role_ref);
-    CFRelease(attr_role);
-    if err == K_AX_ERROR_SUCCESS && !role_ref.is_null() {
-        let known_roles: &[&[u8]] = &[
-            b"AXTextField\0", b"AXTextArea\0", b"AXComboBox\0",
-            b"AXSearchField\0",
-        ];
-        for role_name in known_roles {
-            let expected = cf_str(role_name);
-            if CFEqual(role_ref, expected) {
-                CFRelease(expected);
-                CFRelease(role_ref);
-                return true;
-            }
-            CFRelease(expected);
-        }
-        CFRelease(role_ref);
+    // Accept known text input roles immediately
+    match role.as_str() {
+        "AXTextField" | "AXTextArea" | "AXComboBox" | "AXSearchField" => return true,
+        _ => {}
     }
 
-    // Strategy 2: Check if AXValue is settable (but only for roles that
-    // could plausibly be text inputs)
+    // Reject structural / non-editable roles (containers, chrome, etc.)
+    match role.as_str() {
+        "AXScrollArea" | "AXTable" | "AXList" | "AXOutline"
+        | "AXSplitGroup" | "AXTabGroup" | "AXToolbar"
+        | "AXMenuBar" | "AXMenu" | "AXMenuItem" | "AXWindow"
+        | "AXApplication" | "AXImage" | "AXButton"
+        | "AXRadioButton" | "AXCheckBox" | "AXSlider"
+        | "AXProgressIndicator" | "AXBrowser" | "AXSplitter" => return false,
+        _ => {}
+    }
+
+    // For unknown/web roles: check if AXValue is settable
     let attr_value = cf_str(b"AXValue\0");
     let mut settable = false;
     let err = AXUIElementIsAttributeSettable(el, attr_value, &mut settable);
     CFRelease(attr_value);
     if err == K_AX_ERROR_SUCCESS && settable {
         return true;
+    }
+
+    // Check if AXSelectedText is readable (common in web text inputs)
+    let attr_sel = cf_str(b"AXSelectedText\0");
+    let mut val: CFTypeRef = std::ptr::null();
+    let err = AXUIElementCopyAttributeValue(el, attr_sel, &mut val);
+    CFRelease(attr_sel);
+    if err == K_AX_ERROR_SUCCESS {
+        if !val.is_null() { CFRelease(val); }
+        // Only accept if the role isn't a container
+        if role != "AXGroup" && role != "AXWebArea" && role != "AXStaticText" {
+            return true;
+        }
     }
 
     false
