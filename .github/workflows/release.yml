@@ -46,7 +46,18 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Keyglance ${{ github.ref_name }}"
-          releaseBody: "See the assets below to download and install Keyglance."
+          releaseBody: |
+            See the assets below to download and install Keyglance.
+
+            ## macOS — "App is damaged" warning
+
+            Because the app is not signed with an Apple Developer certificate, macOS Gatekeeper may show a warning that the app is "damaged" or "can't be opened". To fix this, run the following command after installing:
+
+            ```bash
+            xattr -cr /Applications/keyglance.app
+            ```
+
+            Then open the app again. You will also need to grant **Accessibility** permission on first launch.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

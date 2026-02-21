@@ -75,6 +75,13 @@
 
 Download the latest release from the [Releases](https://github.com/bn326160/keyglance/releases) page.
 
+> **macOS — "App is damaged" warning**
+> Because the app is not code-signed with an Apple Developer certificate, macOS Gatekeeper may block it. After installing, run:
+> ```bash
+> xattr -cr /Applications/keyglance.app
+> ```
+> Then open the app again normally.
+
 ### Build from source
 
 #### Prerequisites
