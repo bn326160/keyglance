@@ -636,6 +636,8 @@ unsafe fn get_element_rect(el: AXUIElementRef) -> Option<(f64, f64, f64, f64)> {
 
 // Global toggle for follow-input behavior
 static FOLLOW_INPUT: AtomicBool = AtomicBool::new(false);
+// When true, window is hidden until a text input is focused
+static DISMISSED: AtomicBool = AtomicBool::new(false);
 
 fn main() {
     tauri::Builder::default()
@@ -660,6 +662,10 @@ fn main() {
                 .checked(hide_dock)
                 .build(app)?;
 
+            let dismiss_item = MenuItemBuilder::new("Dismiss Until Input")
+                .id("dismiss")
+                .build(app)?;
+
             let quit_item = MenuItemBuilder::new("Quit")
                 .id("quit")
                 .accelerator("CmdOrCtrl+Q")
@@ -668,6 +674,7 @@ fn main() {
             let menu = MenuBuilder::new(app)
                 .item(&follow_item)
                 .item(&hide_dock_item)
+                .item(&dismiss_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
@@ -693,6 +700,12 @@ fn main() {
                             save_setting(&tray_handle, "hide_dock_icon", new_val);
                             #[cfg(target_os = "macos")]
                             set_dock_icon_visible(!new_val);
+                        }
+                        "dismiss" => {
+                            DISMISSED.store(true, Ordering::Relaxed);
+                            if let Some(win) = tray_handle.get_webview_window("main") {
+                                let _ = win.hide();
+                            }
                         }
                         "quit" => {
                             std::process::exit(0);
@@ -741,7 +754,9 @@ fn main() {
                         }
                     }
 
-                    let current = if FOLLOW_INPUT.load(Ordering::Relaxed) {
+                    let following = FOLLOW_INPUT.load(Ordering::Relaxed);
+                    let dismissed = DISMISSED.load(Ordering::Relaxed);
+                    let current = if following || dismissed {
                         unsafe { get_focused_text_input_rect() }
                     } else {
                         None
@@ -749,6 +764,14 @@ fn main() {
                     if current != last_pos {
                         match &current {
                             Some((x, y, w, h)) => {
+                                // If dismissed, show the window again
+                                if DISMISSED.load(Ordering::Relaxed) {
+                                    DISMISSED.store(false, Ordering::Relaxed);
+                                    if let Some(win) = ax_handle.get_webview_window("main") {
+                                        let _ = win.show();
+                                        let _ = win.set_focus();
+                                    }
+                                }
                                 let _ = ax_handle.emit(
                                     "focused-input",
                                     InputPosition { x: *x, y: *y, width: *w, height: *h },
