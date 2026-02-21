@@ -19,6 +19,15 @@
         "alwaysOnTop": true,
         "transparent": true,
         "decorations": false
+      },
+      {
+        "label": "settings",
+        "title": "Keyglance Settings",
+        "url": "/settings.html",
+        "width": 420,
+        "height": 350,
+        "resizable": false,
+        "visible": false
       }
     ],
     "security": {

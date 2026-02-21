@@ -54,6 +54,10 @@ fn load_matrix_layout(app: &tauri::AppHandle) -> bool {
     load_settings(app).get("matrix_layout").and_then(|v| v.as_bool()).unwrap_or(true)
 }
 
+fn load_show_numbers(app: &tauri::AppHandle) -> bool {
+    load_settings(app).get("show_numbers").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
 // --- macOS dock icon visibility via NSApplication activation policy ---
 #[cfg(target_os = "macos")]
 static HIDE_DOCK_REQUESTED: AtomicBool = AtomicBool::new(false);
@@ -703,6 +707,16 @@ fn main() {
                 .checked(matrix_enabled)
                 .build(app)?;
 
+            let numbers_enabled = load_show_numbers(app.handle());
+            let numbers_item = CheckMenuItemBuilder::new("Show Number Row")
+                .id("show-numbers")
+                .checked(numbers_enabled)
+                .build(app)?;
+
+            let thumb_keys_item = MenuItemBuilder::new("Thumb Keys…")
+                .id("thumb-keys")
+                .build(app)?;
+
             let follow_item = CheckMenuItemBuilder::new("Follow Text Input")
                 .id("follow-input")
                 .checked(saved)
@@ -730,6 +744,8 @@ fn main() {
             let menu = MenuBuilder::new(app)
                 .item(&layout_submenu)
                 .item(&matrix_item)
+                .item(&numbers_item)
+                .item(&thumb_keys_item)
                 .separator()
                 .item(&follow_item)
                 .item(&hide_dock_item)
@@ -744,6 +760,7 @@ fn main() {
                 .map(|(id, item)| (id.clone(), item.clone()))
                 .collect();
             let matrix_item_for_handler = matrix_item.clone();
+            let numbers_item_for_handler = numbers_item.clone();
             let tray_icon_bytes = include_bytes!("../icons/tray-icon.png");
             let tray_icon = tauri::image::Image::from_bytes(tray_icon_bytes)?;
             TrayIconBuilder::new()
@@ -767,6 +784,17 @@ fn main() {
                             let new_val = matrix_item_for_handler.is_checked().unwrap_or(true);
                             save_setting(&tray_handle, "matrix_layout", new_val);
                             let _ = tray_handle.emit("tray-toggle-matrix", new_val);
+                        }
+                        "show-numbers" => {
+                            let new_val = numbers_item_for_handler.is_checked().unwrap_or(false);
+                            save_setting(&tray_handle, "show_numbers", new_val);
+                            let _ = tray_handle.emit("tray-toggle-numbers", new_val);
+                        }
+                        "thumb-keys" => {
+                            if let Some(win) = tray_handle.get_webview_window("settings") {
+                                let _ = win.show();
+                                let _ = win.set_focus();
+                            }
                         }
                         "follow-input" => {
                             let current = FOLLOW_INPUT.load(Ordering::Relaxed);

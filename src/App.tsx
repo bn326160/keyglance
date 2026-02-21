@@ -5,12 +5,14 @@ import { Keyboard } from "./components/Keyboard";
 import { motion } from "framer-motion";
 import { Minimize2, Maximize2 } from "lucide-react";
 import { LAYOUTS, getLayoutKeys, type LayoutId, type KeyboardLayout } from "./layouts";
+import { DEFAULT_THUMBS, THUMBS_STORAGE_KEY, NUMBERS_STORAGE_KEY, type ThumbConfig } from "./thumbKeys";
 
-function getWindowSize(compact: boolean, matrix: boolean) {
-  if (compact && matrix) return { width: 440, height: 220 };
-  if (compact && !matrix) return { width: 380, height: 160 };
-  if (!compact && matrix) return { width: 650, height: 350 };
-  return { width: 560, height: 240 };
+function getWindowSize(compact: boolean, matrix: boolean, showNumbers: boolean) {
+  const numExtra = showNumbers ? (compact ? 35 : 50) : 0;
+  if (compact && matrix) return { width: 440, height: 220 + numExtra };
+  if (compact && !matrix) return { width: 380, height: 160 + numExtra };
+  if (!compact && matrix) return { width: 650, height: 350 + numExtra };
+  return { width: 560, height: 240 + numExtra };
 }
 
 const IDLE_TIMEOUT = 2000;
@@ -31,12 +33,22 @@ export default function App() {
     const saved = localStorage.getItem(MATRIX_STORAGE_KEY);
     return saved === null ? true : saved === 'true';
   });
+  const [showNumbers, setShowNumbers] = useState(() => {
+    return localStorage.getItem(NUMBERS_STORAGE_KEY) === 'true';
+  });
+  const [thumbKeys, setThumbKeys] = useState<ThumbConfig>(() => {
+    try {
+      const saved = localStorage.getItem(THUMBS_STORAGE_KEY);
+      if (saved) return JSON.parse(saved) as ThumbConfig;
+    } catch { /* use default */ }
+    return DEFAULT_THUMBS;
+  });
   const [idle, setIdle] = useState(false);
   const idleRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const layout: KeyboardLayout = LAYOUTS[layoutId];
-  const layoutKeys = useMemo(() => getLayoutKeys(layout), [layout]);
+  const layoutKeys = useMemo(() => getLayoutKeys(layout, showNumbers), [layout, showNumbers]);
 
   const resetIdleTimer = () => {
     setIdle(false);
@@ -59,7 +71,7 @@ export default function App() {
 
   // Restore window size on mount
   useEffect(() => {
-    const size = getWindowSize(compact, matrix);
+    const size = getWindowSize(compact, matrix, showNumbers);
     import("@tauri-apps/api/dpi").then(({ LogicalSize }) => {
       getCurrentWindow().setSize(new LogicalSize(size.width, size.height));
     });
@@ -70,6 +82,8 @@ export default function App() {
   compactRef.current = compact;
   const matrixRef = useRef(matrix);
   matrixRef.current = matrix;
+  const showNumbersRef = useRef(showNumbers);
+  showNumbersRef.current = showNumbers;
 
   useEffect(() => {
     const unlistenInput = listen<{ x: number; y: number; width: number; height: number }>(
@@ -78,7 +92,7 @@ export default function App() {
         const { x, y, width, height } = event.payload;
         const { LogicalPosition } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
-        const size = getWindowSize(compactRef.current, matrixRef.current);
+        const size = getWindowSize(compactRef.current, matrixRef.current, showNumbersRef.current);
 
         // Center the keyboard above the input field, with a gap
         const gap = 40;
@@ -102,11 +116,14 @@ export default function App() {
     };
   }, []);
 
+  const thumbKeySet = useMemo(
+    () => new Set([...thumbKeys.left, ...thumbKeys.right]),
+    [thumbKeys],
+  );
+
   useEffect(() => {
     const isLayoutKey = (key: string) =>
       layoutKeys.has(key.toUpperCase()) || layoutKeys.has(key);
-
-    const THUMB_KEYS = new Set(['Backspace', 'Meta', 'Enter', ' ']);
 
     const unlistenDown = listen("global-keydown", (event) => {
       const rawKey = event.payload as string;
@@ -115,7 +132,7 @@ export default function App() {
       if (isLayoutKey(key)) {
         setActiveKey(key);
         resetIdleTimer();
-      } else if (THUMB_KEYS.has(key) && !idleRef.current) {
+      } else if (thumbKeySet.has(key) && !idleRef.current) {
         setActiveKey(key);
       }
     });
@@ -126,7 +143,7 @@ export default function App() {
       if (key === "Shift") {
         setIsShiftPressed(false);
       }
-      if (isLayoutKey(key) || THUMB_KEYS.has(key)) {
+      if (isLayoutKey(key) || thumbKeySet.has(key)) {
         setActiveKey(undefined);
       }
     });
@@ -136,9 +153,9 @@ export default function App() {
       unlistenUp.then((f) => f());
       clearTimeout(idleTimer.current);
     };
-  }, [layoutKeys]);
+  }, [layoutKeys, thumbKeySet]);
 
-  // Listen for tray menu events (layout change, matrix toggle)
+  // Listen for tray menu events (layout change, matrix toggle, numbers toggle)
   useEffect(() => {
     const unlistenLayout = listen<string>("tray-change-layout", (event) => {
       const id = event.payload as LayoutId;
@@ -152,14 +169,31 @@ export default function App() {
       const newVal = event.payload;
       setMatrix(newVal);
       localStorage.setItem(MATRIX_STORAGE_KEY, String(newVal));
-      const size = getWindowSize(compactRef.current, newVal);
+      const size = getWindowSize(compactRef.current, newVal, showNumbersRef.current);
       const win = getCurrentWindow();
       await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
+    });
+
+    const unlistenNumbers = listen<boolean>("tray-toggle-numbers", async (event) => {
+      const newVal = event.payload;
+      setShowNumbers(newVal);
+      localStorage.setItem(NUMBERS_STORAGE_KEY, String(newVal));
+      const size = getWindowSize(compactRef.current, matrixRef.current, newVal);
+      const win = getCurrentWindow();
+      await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
+    });
+
+    const unlistenThumbs = listen<ThumbConfig>("settings-update-thumbs", (event) => {
+      const config = event.payload;
+      setThumbKeys(config);
+      localStorage.setItem(THUMBS_STORAGE_KEY, JSON.stringify(config));
     });
 
     return () => {
       unlistenLayout.then((f) => f());
       unlistenMatrix.then((f) => f());
+      unlistenNumbers.then((f) => f());
+      unlistenThumbs.then((f) => f());
     };
   }, []);
 
@@ -167,7 +201,7 @@ export default function App() {
     const next = !compact;
     setCompact(next);
     localStorage.setItem(STORAGE_KEY, String(next));
-    const size = getWindowSize(next, matrix);
+    const size = getWindowSize(next, matrix, showNumbers);
     const win = getCurrentWindow();
     await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
   };
@@ -207,7 +241,7 @@ export default function App() {
           {layout.name}
         </div>
 
-        <Keyboard layout={layout} activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} matrix={matrix} />
+        <Keyboard layout={layout} activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} matrix={matrix} showNumbers={showNumbers} thumbKeys={thumbKeys} />
       </motion.div>
     </main>
   );

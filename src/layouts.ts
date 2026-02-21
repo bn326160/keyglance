@@ -13,10 +13,16 @@ export interface KeyboardLayout {
 const LEFT_FINGERS = ['left-pinky', 'left-ring', 'left-middle', 'left-index', 'left-index'];
 const RIGHT_FINGERS = ['right-index', 'right-index', 'right-middle', 'right-ring', 'right-pinky'];
 
+// Number row data (shared across all layouts — always QWERTY positional)
+export const NUMBER_ROW_LEFT = ['1', '2', '3', '4', '5'];
+export const NUMBER_ROW_RIGHT = ['6', '7', '8', '9', '0'];
+export const NUMBER_ROW_SHIFTED_LEFT = ['!', '@', '#', '$', '%'];
+export const NUMBER_ROW_SHIFTED_RIGHT = ['^', '&', '*', '(', ')'];
+
 /**
  * Build a key→finger mapping from a layout's key positions.
  */
-export function buildFingerMap(layout: KeyboardLayout): Record<string, string> {
+export function buildFingerMap(layout: KeyboardLayout, includeNumbers = false): Record<string, string> {
   const map: Record<string, string> = {};
   for (const side of ['left', 'right'] as const) {
     const rows = layout[side];
@@ -29,6 +35,16 @@ export function buildFingerMap(layout: KeyboardLayout): Record<string, string> {
       }
     }
   }
+  if (includeNumbers) {
+    for (let col = 0; col < NUMBER_ROW_LEFT.length; col++) {
+      map[NUMBER_ROW_LEFT[col]] = LEFT_FINGERS[col];
+      map[NUMBER_ROW_SHIFTED_LEFT[col]] = LEFT_FINGERS[col];
+    }
+    for (let col = 0; col < NUMBER_ROW_RIGHT.length; col++) {
+      map[NUMBER_ROW_RIGHT[col]] = RIGHT_FINGERS[col];
+      map[NUMBER_ROW_SHIFTED_RIGHT[col]] = RIGHT_FINGERS[col];
+    }
+  }
   return map;
 }
 
@@ -36,7 +52,7 @@ export function buildFingerMap(layout: KeyboardLayout): Record<string, string> {
  * Get all unique keys present in a layout (for checking if a key event
  * should activate the keyboard overlay).
  */
-export function getLayoutKeys(layout: KeyboardLayout): Set<string> {
+export function getLayoutKeys(layout: KeyboardLayout, includeNumbers = false): Set<string> {
   const keys = new Set<string>();
   for (const side of ['left', 'right'] as const) {
     for (const row of layout[side]) {
@@ -45,6 +61,10 @@ export function getLayoutKeys(layout: KeyboardLayout): Set<string> {
         keys.add(key.toUpperCase());
       }
     }
+  }
+  if (includeNumbers) {
+    for (const key of NUMBER_ROW_LEFT) keys.add(key);
+    for (const key of NUMBER_ROW_RIGHT) keys.add(key);
   }
   return keys;
 }
