@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  background-color: transparent !important;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: transparent !important;
+  overflow: hidden;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+}
+
+.key-cap {
+  @apply flex items-center justify-center rounded-lg border border-black/5 bg-white text-sm font-medium transition-all duration-75;
+  box-shadow: 0 2px 0 0 rgba(0,0,0,0.05);
+}
+
+.key-cap.active {
+  @apply scale-95 bg-blue-500 text-white border-blue-600 shadow-none;
+}
+
+.home-row {
+  @apply border-b-2 border-b-blue-400/30;
+}
