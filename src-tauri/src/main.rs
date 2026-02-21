@@ -15,19 +15,80 @@ fn config_path(app: &tauri::AppHandle) -> PathBuf {
     dir.join("settings.json")
 }
 
-fn load_follow_input(app: &tauri::AppHandle) -> bool {
+fn load_settings(app: &tauri::AppHandle) -> serde_json::Value {
     let path = config_path(app);
     fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-        .and_then(|v| v.get("follow_input")?.as_bool())
-        .unwrap_or(false)
+        .unwrap_or_else(|| serde_json::json!({}))
 }
 
-fn save_follow_input(app: &tauri::AppHandle, value: bool) {
+fn save_setting(app: &tauri::AppHandle, key: &str, value: bool) {
     let path = config_path(app);
-    let json = serde_json::json!({ "follow_input": value });
-    let _ = fs::write(path, json.to_string());
+    let mut settings = load_settings(app);
+    settings[key] = serde_json::json!(value);
+    let _ = fs::write(path, settings.to_string());
+}
+
+fn load_follow_input(app: &tauri::AppHandle) -> bool {
+    load_settings(app).get("follow_input").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+fn load_hide_dock_icon(app: &tauri::AppHandle) -> bool {
+    load_settings(app).get("hide_dock_icon").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
+// --- macOS dock icon visibility via NSApplication activation policy ---
+#[cfg(target_os = "macos")]
+static HIDE_DOCK_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "macos")]
+fn set_dock_icon_visible(visible: bool) {
+    unsafe {
+        let send0: unsafe extern "C" fn(*mut c_void, *const c_void) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        let send1: unsafe extern "C" fn(*mut c_void, *const c_void, *mut c_void) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+
+        let ns_app_class = objc_getClass(b"NSApplication\0".as_ptr());
+        let shared_app_sel = sel_registerName(b"sharedApplication\0".as_ptr());
+        let app = send0(ns_app_class, shared_app_sel);
+
+        let set_policy_sel = sel_registerName(b"setActivationPolicy:\0".as_ptr());
+        // NSApplicationActivationPolicyRegular = 0 (shows dock icon)
+        // NSApplicationActivationPolicyAccessory = 1 (hides dock icon)
+        let policy: i64 = if visible { 0 } else { 1 };
+        let send_i64: unsafe extern "C" fn(*mut c_void, *const c_void, i64) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        send_i64(app, set_policy_sel, policy);
+
+        // When showing the dock icon again, restore the app icon from embedded PNG
+        // (macOS loses it when switching activation policies)
+        if visible {
+            let icon_bytes: &[u8] = include_bytes!("../icons/icon.png");
+
+            // Create NSData from the embedded bytes
+            let ns_data_class = objc_getClass(b"NSData\0".as_ptr());
+            let data_with_bytes_sel = sel_registerName(b"dataWithBytes:length:\0".as_ptr());
+            let send_data: unsafe extern "C" fn(*mut c_void, *const c_void, *const u8, usize) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let ns_data = send_data(ns_data_class, data_with_bytes_sel, icon_bytes.as_ptr(), icon_bytes.len());
+
+            if !ns_data.is_null() {
+                // Create NSImage from data
+                let ns_image_class = objc_getClass(b"NSImage\0".as_ptr());
+                let alloc_sel = sel_registerName(b"alloc\0".as_ptr());
+                let init_with_data_sel = sel_registerName(b"initWithData:\0".as_ptr());
+                let image_alloc = send0(ns_image_class, alloc_sel);
+                let image = send1(image_alloc, init_with_data_sel, ns_data);
+
+                if !image.is_null() {
+                    let set_icon_sel = sel_registerName(b"setApplicationIconImage:\0".as_ptr());
+                    send1(app, set_icon_sel, image);
+                }
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -583,10 +644,20 @@ fn main() {
             let saved = load_follow_input(app.handle());
             FOLLOW_INPUT.store(saved, Ordering::Relaxed);
 
+            // Store dock-icon preference to apply after run loop starts
+            let hide_dock = load_hide_dock_icon(app.handle());
+            #[cfg(target_os = "macos")]
+            HIDE_DOCK_REQUESTED.store(hide_dock, Ordering::Relaxed);
+
             // --- System tray with menu ---
             let follow_item = CheckMenuItemBuilder::new("Follow Text Input")
                 .id("follow-input")
                 .checked(saved)
+                .build(app)?;
+
+            let hide_dock_item = CheckMenuItemBuilder::new("Hide Dock Icon")
+                .id("hide-dock-icon")
+                .checked(hide_dock)
                 .build(app)?;
 
             let quit_item = MenuItemBuilder::new("Quit")
@@ -596,6 +667,7 @@ fn main() {
 
             let menu = MenuBuilder::new(app)
                 .item(&follow_item)
+                .item(&hide_dock_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
@@ -612,8 +684,15 @@ fn main() {
                         "follow-input" => {
                             let current = FOLLOW_INPUT.load(Ordering::Relaxed);
                             FOLLOW_INPUT.store(!current, Ordering::Relaxed);
-                            save_follow_input(&tray_handle, !current);
+                            save_setting(&tray_handle, "follow_input", !current);
                             let _ = tray_handle.emit("tray-follow-input", !current);
+                        }
+                        "hide-dock-icon" => {
+                            let current = load_hide_dock_icon(&tray_handle);
+                            let new_val = !current;
+                            save_setting(&tray_handle, "hide_dock_icon", new_val);
+                            #[cfg(target_os = "macos")]
+                            set_dock_icon_visible(!new_val);
                         }
                         "quit" => {
                             std::process::exit(0);
@@ -719,6 +798,15 @@ fn main() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Ready = &event {
+                if HIDE_DOCK_REQUESTED.load(Ordering::Relaxed) {
+                    set_dock_icon_visible(false);
+                }
+            }
+            let _ = (app_handle, event);
+        });
 }
