@@ -4,8 +4,36 @@ import {
   THUMB_KEY_OPTIONS,
   DEFAULT_THUMBS,
   THUMBS_STORAGE_KEY,
+  THUMB_DISPLAY,
   type ThumbConfig,
 } from './thumbKeys';
+
+function ThumbSelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between py-2.5 group">
+      <span className="text-[13px] text-macos-label">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="macos-select"
+      >
+        {THUMB_KEY_OPTIONS.map((opt) => (
+          <option key={opt.id} value={opt.id}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export default function Settings() {
   const [thumbs, setThumbs] = useState<ThumbConfig>(() => {
@@ -24,113 +52,91 @@ export default function Settings() {
     });
   };
 
-  // Persist and notify main window on any change
   useEffect(() => {
     localStorage.setItem(THUMBS_STORAGE_KEY, JSON.stringify(thumbs));
     emit('settings-update-thumbs', thumbs);
   }, [thumbs]);
 
-  const selectClass =
-    'w-full px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent';
+  const isDefault =
+    thumbs.left[0] === DEFAULT_THUMBS.left[0] &&
+    thumbs.left[1] === DEFAULT_THUMBS.left[1] &&
+    thumbs.right[0] === DEFAULT_THUMBS.right[0] &&
+    thumbs.right[1] === DEFAULT_THUMBS.right[1];
+
+  // Preview of current thumb layout
+  const previewKey = (id: string) => (
+    <div className="macos-preview-key">{THUMB_DISPLAY[id] ?? id}</div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-6 space-y-6">
-        <div>
-          <h1 className="text-lg font-semibold text-gray-900">Thumb Keys</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Customize the thumb keys shown in matrix mode.
-          </p>
-        </div>
+    <div className="macos-settings-root">
+      {/* Toolbar-style drag region */}
+      <div data-tauri-drag-region className="macos-toolbar">
+        <span className="macos-toolbar-title">Thumb Keys</span>
+      </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          {/* Left side */}
-          <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
-              Left Hand
-            </h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Inner thumb
-              </label>
-              <select
-                value={thumbs.left[0]}
-                onChange={(e) => update('left', 0, e.target.value)}
-                className={selectClass}
-              >
-                {THUMB_KEY_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Outer thumb
-              </label>
-              <select
-                value={thumbs.left[1]}
-                onChange={(e) => update('left', 1, e.target.value)}
-                className={selectClass}
-              >
-                {THUMB_KEY_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+      <div className="px-5 pb-5 space-y-4">
+        {/* Preview */}
+        <div className="flex items-center justify-center gap-8 pt-1 pb-2">
+          <div className="flex gap-1.5">
+            {previewKey(thumbs.left[0])}
+            {previewKey(thumbs.left[1])}
           </div>
-
-          {/* Right side */}
-          <div className="space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-400">
-              Right Hand
-            </h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Inner thumb
-              </label>
-              <select
-                value={thumbs.right[0]}
-                onChange={(e) => update('right', 0, e.target.value)}
-                className={selectClass}
-              >
-                {THUMB_KEY_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Outer thumb
-              </label>
-              <select
-                value={thumbs.right[1]}
-                onChange={(e) => update('right', 1, e.target.value)}
-                className={selectClass}
-              >
-                {THUMB_KEY_OPTIONS.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="text-[10px] font-medium text-macos-secondary tracking-widest uppercase">
+            split
+          </div>
+          <div className="flex gap-1.5">
+            {previewKey(thumbs.right[0])}
+            {previewKey(thumbs.right[1])}
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            setThumbs(DEFAULT_THUMBS);
-          }}
-          className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          Reset to defaults
-        </button>
+        {/* Left Hand */}
+        <fieldset className="macos-fieldset">
+          <legend className="macos-legend">Left Hand</legend>
+          <div className="macos-field-group">
+            <ThumbSelect
+              label="Inner"
+              value={thumbs.left[0]}
+              onChange={(v) => update('left', 0, v)}
+            />
+            <div className="macos-separator" />
+            <ThumbSelect
+              label="Outer"
+              value={thumbs.left[1]}
+              onChange={(v) => update('left', 1, v)}
+            />
+          </div>
+        </fieldset>
+
+        {/* Right Hand */}
+        <fieldset className="macos-fieldset">
+          <legend className="macos-legend">Right Hand</legend>
+          <div className="macos-field-group">
+            <ThumbSelect
+              label="Inner"
+              value={thumbs.right[0]}
+              onChange={(v) => update('right', 0, v)}
+            />
+            <div className="macos-separator" />
+            <ThumbSelect
+              label="Outer"
+              value={thumbs.right[1]}
+              onChange={(v) => update('right', 1, v)}
+            />
+          </div>
+        </fieldset>
+
+        {/* Reset */}
+        <div className="flex justify-end pt-1">
+          <button
+            onClick={() => setThumbs(DEFAULT_THUMBS)}
+            disabled={isDefault}
+            className="macos-button-secondary"
+          >
+            Reset to Defaults
+          </button>
+        </div>
       </div>
     </div>
   );
