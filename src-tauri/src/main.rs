@@ -405,6 +405,7 @@ unsafe fn ax_string_attr(el: AXUIElementRef, attr_name: &[u8]) -> Option<String>
 }
 
 /// Debug: log the role and subrole of an AX element.
+#[cfg(debug_assertions)]
 unsafe fn debug_element(label: &str, el: AXUIElementRef) {
     let role = ax_string_attr(el, b"AXRole\0").unwrap_or_default();
     let subrole = ax_string_attr(el, b"AXSubrole\0").unwrap_or_default();
@@ -757,9 +758,11 @@ fn main() {
             let ax_handle = app.handle().clone();
             thread::spawn(move || {
                 let mut last_pos: Option<(f64, f64, f64, f64)> = None;
+                #[cfg(debug_assertions)]
                 let mut last_pid: Option<i32> = None;
                 loop {
                     // Debug: log focused element info when the frontmost app changes
+                    #[cfg(debug_assertions)]
                     unsafe {
                         let pid = frontmost_app_pid();
                         if pid != last_pid {
