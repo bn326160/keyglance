@@ -26,12 +26,19 @@ export function buildFingerMap(layout: KeyboardLayout, includeNumbers = false): 
   const map: Record<string, string> = {};
   for (const side of ['left', 'right'] as const) {
     const rows = layout[side];
+    const shiftedRows = side === 'left' ? layout.shiftedLeft : layout.shiftedRight;
     const fingers = side === 'left' ? LEFT_FINGERS : RIGHT_FINGERS;
     for (const row of rows) {
       for (let col = 0; col < row.length; col++) {
         const key = row[col];
         map[key] = fingers[col];
         map[key.toUpperCase()] = fingers[col];
+      }
+    }
+    for (const row of shiftedRows) {
+      for (let col = 0; col < row.length; col++) {
+        const key = row[col];
+        if (!map[key]) map[key] = fingers[col];
       }
     }
   }
