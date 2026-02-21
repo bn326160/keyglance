@@ -12,10 +12,12 @@ const SIZES = {
 
 const IDLE_TIMEOUT = 2000;
 
+const STORAGE_KEY = 'keyglance-compact';
+
 export default function App() {
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const [isShiftPressed, setIsShiftPressed] = useState(false);
-  const [compact, setCompact] = useState(false);
+  const [compact, setCompact] = useState(() => localStorage.getItem(STORAGE_KEY) === 'true');
   const [idle, setIdle] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -24,6 +26,15 @@ export default function App() {
     clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => setIdle(true), IDLE_TIMEOUT);
   };
+
+  // Restore window size on mount if compact was saved
+  useEffect(() => {
+    if (compact) {
+      import("@tauri-apps/api/dpi").then(({ LogicalSize }) => {
+        getCurrentWindow().setSize(new LogicalSize(SIZES.compact.width, SIZES.compact.height));
+      });
+    }
+  }, []);
 
   useEffect(() => {
     const unlistenDown = listen("global-keydown", (event) => {
@@ -53,6 +64,7 @@ export default function App() {
   const toggleCompact = async () => {
     const next = !compact;
     setCompact(next);
+    localStorage.setItem(STORAGE_KEY, String(next));
     const size = next ? SIZES.compact : SIZES.normal;
     const win = getCurrentWindow();
     await win.setSize(new (await import("@tauri-apps/api/dpi")).LogicalSize(size.width, size.height));
