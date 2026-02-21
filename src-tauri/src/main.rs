@@ -1,8 +1,34 @@
 use std::ffi::c_void;
-use std::sync::mpsc;
+use std::sync::{mpsc, atomic::{AtomicBool, Ordering}};
 use std::thread;
+use std::fs;
+use std::path::PathBuf;
 use tauri::Emitter;
+use tauri::Manager;
+use tauri::menu::{MenuBuilder, MenuItemBuilder, CheckMenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use serde::Serialize;
+
+fn config_path(app: &tauri::AppHandle) -> PathBuf {
+    let dir = app.path().app_config_dir().expect("no app config dir");
+    let _ = fs::create_dir_all(&dir);
+    dir.join("settings.json")
+}
+
+fn load_follow_input(app: &tauri::AppHandle) -> bool {
+    let path = config_path(app);
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("follow_input")?.as_bool())
+        .unwrap_or(false)
+}
+
+fn save_follow_input(app: &tauri::AppHandle, value: bool) {
+    let path = config_path(app);
+    let json = serde_json::json!({ "follow_input": value });
+    let _ = fs::write(path, json.to_string());
+}
 
 // ---------------------------------------------------------------------------
 // Lightweight macOS CGEventTap key listener
@@ -547,9 +573,56 @@ unsafe fn get_element_rect(el: AXUIElementRef) -> Option<(f64, f64, f64, f64)> {
     Some((point.x, point.y, size.width, size.height))
 }
 
+// Global toggle for follow-input behavior
+static FOLLOW_INPUT: AtomicBool = AtomicBool::new(false);
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            // Load persisted setting
+            let saved = load_follow_input(app.handle());
+            FOLLOW_INPUT.store(saved, Ordering::Relaxed);
+
+            // --- System tray with menu ---
+            let follow_item = CheckMenuItemBuilder::new("Follow Text Input")
+                .id("follow-input")
+                .checked(saved)
+                .build(app)?;
+
+            let quit_item = MenuItemBuilder::new("Quit")
+                .id("quit")
+                .accelerator("CmdOrCtrl+Q")
+                .build(app)?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&follow_item)
+                .separator()
+                .item(&quit_item)
+                .build()?;
+
+            let tray_handle = app.handle().clone();
+            let tray_icon_bytes = include_bytes!("../icons/tray-icon.png");
+            let tray_icon = tauri::image::Image::from_bytes(tray_icon_bytes)?;
+            TrayIconBuilder::new()
+                .icon(tray_icon)
+                .icon_as_template(true)
+                .menu(&menu)
+                .on_menu_event(move |_app, event| {
+                    match event.id().as_ref() {
+                        "follow-input" => {
+                            let current = FOLLOW_INPUT.load(Ordering::Relaxed);
+                            FOLLOW_INPUT.store(!current, Ordering::Relaxed);
+                            save_follow_input(&tray_handle, !current);
+                            let _ = tray_handle.emit("tray-follow-input", !current);
+                        }
+                        "quit" => {
+                            std::process::exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
+
             let app_handle = app.handle().clone();
             let (tx, rx) = mpsc::channel::<KeyEvent>();
 
@@ -589,7 +662,11 @@ fn main() {
                         }
                     }
 
-                    let current = unsafe { get_focused_text_input_rect() };
+                    let current = if FOLLOW_INPUT.load(Ordering::Relaxed) {
+                        unsafe { get_focused_text_input_rect() }
+                    } else {
+                        None
+                    };
                     if current != last_pos {
                         match &current {
                             Some((x, y, w, h)) => {
