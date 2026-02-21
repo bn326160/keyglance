@@ -66,6 +66,7 @@ extern "C" {
     ) -> CFMachPortRef;
 
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+    fn CGEventGetFlags(event: CGEventRef) -> u64;
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
 }
 
@@ -147,7 +148,7 @@ fn is_modifier(code: u16) -> bool {
 
 enum KeyEvent {
     Press(String),
-    Release,
+    Release(String),
 }
 
 // We pass a raw pointer to the channel sender as user_info.
@@ -166,17 +167,18 @@ unsafe extern "C" fn tap_callback(
             let _ = tx.send(KeyEvent::Press(keycode_to_name(code)));
         }
         CGEventType::KeyUp => {
-            let _ = tx.send(KeyEvent::Release);
+            let code = CGEventGetIntegerValueField(event, KEYBOARD_EVENT_KEYCODE) as u16;
+            let _ = tx.send(KeyEvent::Release(keycode_to_name(code)));
         }
         CGEventType::FlagsChanged => {
             let code = CGEventGetIntegerValueField(event, KEYBOARD_EVENT_KEYCODE) as u16;
             if is_modifier(code) {
-                // Read the current modifier flags (CGEventFlags)
-                let flags = CGEventGetIntegerValueField(event, 0 /* kCGEventFlagsField */) as u64;
+                // Read the current modifier flags via CGEventGetFlags
+                let flags = CGEventGetFlags(event);
                 if flags > LAST_FLAGS {
                     let _ = tx.send(KeyEvent::Press(keycode_to_name(code)));
                 } else {
-                    let _ = tx.send(KeyEvent::Release);
+                    let _ = tx.send(KeyEvent::Release(keycode_to_name(code)));
                 }
                 LAST_FLAGS = flags;
             }
@@ -202,8 +204,8 @@ fn main() {
                         KeyEvent::Press(key_str) => {
                             let _ = app_handle.emit("global-keydown", key_str);
                         }
-                        KeyEvent::Release => {
-                            let _ = app_handle.emit("global-keyup", "");
+                        KeyEvent::Release(key_str) => {
+                            let _ = app_handle.emit("global-keyup", key_str);
                         }
                     }
                 }

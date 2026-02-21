@@ -16,9 +16,13 @@ export default function App() {
       if (key.includes("Shift")) setIsShiftPressed(true);
     });
 
-    const unlistenUp = listen("global-keyup", () => {
+    const unlistenUp = listen("global-keyup", (event) => {
+      const rawKey = event.payload as string;
+      const key = rawKey.replace("Key", "");
+      if (key === "Shift") {
+        setIsShiftPressed(false);
+      }
       setActiveKey(undefined);
-      setIsShiftPressed(false);
     });
 
     return () => {
