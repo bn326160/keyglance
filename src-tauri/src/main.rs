@@ -337,6 +337,7 @@ extern "C" {
         value: CFTypeRef,
     ) -> AXError;
     fn AXValueGetValue(value: CFTypeRef, value_type: u32, value_ptr: *mut c_void) -> bool;
+    fn AXIsProcessTrustedWithOptions(options: CFTypeRef) -> bool;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -357,7 +358,37 @@ extern "C" {
     fn CFStringGetTypeID() -> u64;
     fn CFArrayGetCount(array: CFTypeRef) -> i64;
     fn CFArrayGetValueAtIndex(array: CFTypeRef, idx: i64) -> CFTypeRef;
+    fn CFDictionaryCreate(
+        allocator: CFAllocatorRef,
+        keys: *const CFTypeRef,
+        values: *const CFTypeRef,
+        num_values: i64,
+        key_callbacks: *const c_void,
+        value_callbacks: *const c_void,
+    ) -> CFTypeRef;
     static kCFBooleanTrue: CFTypeRef;
+    static kCFTypeDictionaryKeyCallBacks: c_void;
+    static kCFTypeDictionaryValueCallBacks: c_void;
+}
+
+/// Prompt the user for Accessibility permissions if not already granted.
+/// Returns true if the app is already trusted.
+unsafe fn prompt_accessibility_permissions() -> bool {
+    let key = cf_str(b"AXTrustedCheckOptionPrompt\0");
+    let keys = [key];
+    let values = [kCFBooleanTrue];
+    let options = CFDictionaryCreate(
+        std::ptr::null(),
+        keys.as_ptr(),
+        values.as_ptr(),
+        1,
+        &kCFTypeDictionaryKeyCallBacks as *const _ as *const c_void,
+        &kCFTypeDictionaryValueCallBacks as *const _ as *const c_void,
+    );
+    let trusted = AXIsProcessTrustedWithOptions(options);
+    CFRelease(options);
+    CFRelease(key);
+    trusted
 }
 
 #[link(name = "AppKit", kind = "framework")]
@@ -664,6 +695,17 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .setup(|app| {
+            // Prompt for Accessibility permissions (required for CGEventTap
+            // and AXUIElement APIs used by key listening and Follow Text Input).
+            // On first launch this opens the macOS system dialog.
+            #[cfg(target_os = "macos")]
+            unsafe {
+                let trusted = prompt_accessibility_permissions();
+                if !trusted {
+                    eprintln!("keyglance: Accessibility permissions not yet granted – some features will be unavailable until the user allows access in System Settings.");
+                }
+            }
+
             // Load persisted setting
             let saved = load_follow_input(app.handle());
             FOLLOW_INPUT.store(saved, Ordering::Relaxed);
@@ -909,22 +951,26 @@ fn main() {
             // Listener thread – sets up a CGEventTap on its own run loop.
             // Only reads the virtual key code (an integer); no TSM / keyboard
             // layout APIs are called, so it's safe on any thread.
+            // Retries every 2 seconds until Accessibility permissions are granted.
             thread::spawn(move || unsafe {
                 // Leak the sender so it lives as long as the thread.
                 let tx_ptr = Box::into_raw(Box::new(tx));
 
-                let tap = CGEventTapCreate(
-                    0, // kCGHIDEventTap
-                    0, // kCGHeadInsertEventTap
-                    1, // kCGEventTapOptionListenOnly
-                    EVENT_MASK,
-                    tap_callback,
-                    tx_ptr as *mut c_void,
-                );
-                if tap.is_null() {
-                    eprintln!("keyglance: failed to create CGEventTap (Accessibility permissions?)");
-                    return;
-                }
+                let tap = loop {
+                    let t = CGEventTapCreate(
+                        0, // kCGHIDEventTap
+                        0, // kCGHeadInsertEventTap
+                        1, // kCGEventTapOptionListenOnly
+                        EVENT_MASK,
+                        tap_callback,
+                        tx_ptr as *mut c_void,
+                    );
+                    if !t.is_null() {
+                        break t;
+                    }
+                    eprintln!("keyglance: waiting for Accessibility permissions to create CGEventTap…");
+                    thread::sleep(std::time::Duration::from_secs(2));
+                };
 
                 let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
                 if source.is_null() {
