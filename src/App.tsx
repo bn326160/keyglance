@@ -44,6 +44,7 @@ export default function App() {
     return DEFAULT_THUMBS;
   });
   const [idle, setIdle] = useState(false);
+  const [accessibilityMissing, setAccessibilityMissing] = useState(false);
   const idleRef = useRef(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -189,11 +190,21 @@ export default function App() {
       localStorage.setItem(THUMBS_STORAGE_KEY, JSON.stringify(config));
     });
 
+    const unlistenAccessMissing = listen("accessibility-missing", () => {
+      setAccessibilityMissing(true);
+    });
+
+    const unlistenAccessGranted = listen("accessibility-granted", () => {
+      setAccessibilityMissing(false);
+    });
+
     return () => {
       unlistenLayout.then((f) => f());
       unlistenMatrix.then((f) => f());
       unlistenNumbers.then((f) => f());
       unlistenThumbs.then((f) => f());
+      unlistenAccessMissing.then((f) => f());
+      unlistenAccessGranted.then((f) => f());
     };
   }, []);
 
@@ -242,6 +253,12 @@ export default function App() {
         </div>
 
         <Keyboard layout={layout} activeKey={activeKey} isShiftPressed={isShiftPressed} compact={compact} matrix={matrix} showNumbers={showNumbers} thumbKeys={thumbKeys} />
+
+        {accessibilityMissing && (
+          <div className={`text-center text-red-500/70 font-semibold ${compact ? "text-[8px] mt-2" : "text-[10px] mt-3"}`}>
+            Enable Keyglance in System Settings &gt; Privacy &amp; Security &gt; Accessibility
+          </div>
+        )}
       </motion.div>
     </main>
   );

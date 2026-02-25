@@ -337,6 +337,7 @@ extern "C" {
         value: CFTypeRef,
     ) -> AXError;
     fn AXValueGetValue(value: CFTypeRef, value_type: u32, value_ptr: *mut c_void) -> bool;
+    fn AXIsProcessTrustedWithOptions(options: CFTypeRef) -> bool;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -357,7 +358,42 @@ extern "C" {
     fn CFStringGetTypeID() -> u64;
     fn CFArrayGetCount(array: CFTypeRef) -> i64;
     fn CFArrayGetValueAtIndex(array: CFTypeRef, idx: i64) -> CFTypeRef;
+    fn CFDictionaryCreate(
+        allocator: CFAllocatorRef,
+        keys: *const CFTypeRef,
+        values: *const CFTypeRef,
+        num_values: i64,
+        key_callbacks: *const c_void,
+        value_callbacks: *const c_void,
+    ) -> CFTypeRef;
     static kCFBooleanTrue: CFTypeRef;
+    static kCFTypeDictionaryKeyCallBacks: c_void;
+    static kCFTypeDictionaryValueCallBacks: c_void;
+}
+
+/// Prompt the user for Accessibility permissions if not already granted.
+/// Returns true if the app is already trusted.
+unsafe fn prompt_accessibility_permissions() -> bool {
+    let key = cf_str(b"AXTrustedCheckOptionPrompt\0");
+    let keys = [key];
+    let values = [kCFBooleanTrue];
+    let options = CFDictionaryCreate(
+        std::ptr::null(),
+        keys.as_ptr(),
+        values.as_ptr(),
+        1,
+        &kCFTypeDictionaryKeyCallBacks as *const _ as *const c_void,
+        &kCFTypeDictionaryValueCallBacks as *const _ as *const c_void,
+    );
+    let trusted = AXIsProcessTrustedWithOptions(options);
+    CFRelease(options);
+    CFRelease(key);
+    trusted
+}
+
+/// Check Accessibility trust status WITHOUT opening System Settings.
+unsafe fn is_accessibility_trusted() -> bool {
+    AXIsProcessTrustedWithOptions(std::ptr::null())
 }
 
 #[link(name = "AppKit", kind = "framework")]
@@ -664,6 +700,18 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .setup(|app| {
+            // Prompt for Accessibility permissions (required for CGEventTap
+            // and AXUIElement APIs used by key listening and Follow Text Input).
+            // Only prompt (open System Settings) once — on first launch when
+            // the app is not yet trusted. Subsequent launches check silently.
+            #[cfg(target_os = "macos")]
+            unsafe {
+                if !is_accessibility_trusted() {
+                    // Open System Settings once to guide the user
+                    prompt_accessibility_permissions();
+                }
+            }
+
             // Load persisted setting
             let saved = load_follow_input(app.handle());
             FOLLOW_INPUT.store(saved, Ordering::Relaxed);
@@ -909,22 +957,46 @@ fn main() {
             // Listener thread – sets up a CGEventTap on its own run loop.
             // Only reads the virtual key code (an integer); no TSM / keyboard
             // layout APIs are called, so it's safe on any thread.
+            //
+            // On macOS 10.15+, CGEventTapCreate can succeed even without
+            // Accessibility permission, but the tap silently receives no events.
+            // To avoid this, we wait until the app is actually trusted before
+            // creating the tap.
+            let listener_handle = app.handle().clone();
             thread::spawn(move || unsafe {
                 // Leak the sender so it lives as long as the thread.
                 let tx_ptr = Box::into_raw(Box::new(tx));
 
-                let tap = CGEventTapCreate(
-                    0, // kCGHIDEventTap
-                    0, // kCGHeadInsertEventTap
-                    1, // kCGEventTapOptionListenOnly
-                    EVENT_MASK,
-                    tap_callback,
-                    tx_ptr as *mut c_void,
-                );
-                if tap.is_null() {
-                    eprintln!("keyglance: failed to create CGEventTap (Accessibility permissions?)");
-                    return;
+                // Wait until Accessibility permission is granted.
+                // CGEventTapCreate can return a valid handle even without
+                // permission, but the tap won't receive any events.
+                let mut notified = false;
+                while !is_accessibility_trusted() {
+                    if !notified {
+                        let _ = listener_handle.emit("accessibility-missing", true);
+                        notified = true;
+                    }
+                    thread::sleep(std::time::Duration::from_secs(1));
                 }
+                if notified {
+                    let _ = listener_handle.emit("accessibility-granted", true);
+                }
+
+                let tap = loop {
+                    let t = CGEventTapCreate(
+                        0, // kCGHIDEventTap
+                        0, // kCGHeadInsertEventTap
+                        1, // kCGEventTapOptionListenOnly
+                        EVENT_MASK,
+                        tap_callback,
+                        tx_ptr as *mut c_void,
+                    );
+                    if !t.is_null() {
+                        break t;
+                    }
+                    eprintln!("keyglance: CGEventTapCreate returned NULL, retrying…");
+                    thread::sleep(std::time::Duration::from_secs(2));
+                };
 
                 let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
                 if source.is_null() {

@@ -23,20 +23,10 @@
 
 ## Screenshots
 
-**Active**
-
 <p>
   <img src="docs/active.png" alt="Normal view — active" width="480" />
   &nbsp;&nbsp;
   <img src="docs/compact-active.png" alt="Compact view — active" width="340" />
-</p>
-
-**Idle**
-
-<p>
-  <img src="docs/inactive.png" alt="Normal view — idle" width="480" />
-  &nbsp;&nbsp;
-  <img src="docs/compact-inactive.png" alt="Compact view — idle" width="340" />
 </p>
 
 ## Features
@@ -74,6 +64,13 @@
 ### Pre-built binaries
 
 Download the latest release from the [Releases](https://github.com/bn326160/keyglance/releases) page.
+
+> **macOS — "App is damaged" warning**
+> Because the app is not code-signed with an Apple Developer certificate, macOS Gatekeeper may block it. After installing, run:
+> ```bash
+> xattr -cr /Applications/keyglance.app
+> ```
+> Then open the app again normally.
 
 ### Build from source
 
