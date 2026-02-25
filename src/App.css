@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+:root {
+  background-color: transparent;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: transparent;
+  overflow: hidden;
+}
+
+.glass {
+  background: rgba(240, 240, 240, 0.92);
+  transition: background 0.5s ease;
+}
+
+.glass.idle {
+  background: rgba(200, 200, 200, 0.4);
+}
+
+.key-cap {
+  @apply flex items-center justify-center rounded-lg text-sm font-medium;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 0 0 rgba(0,0,0,0.05);
+  transition: background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease;
+}
+
+.glass.idle .key-cap {
+  background: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: none;
+}
+
+.glass.idle .key-cap.active {
+  transform: none !important;
+  color: inherit !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.key-cap.active {
+  @apply scale-95 bg-blue-500 text-white border-blue-600 shadow-none;
+}
+
+.home-row {
+  @apply border-b-2 border-b-blue-400/30;
+}
+
+/* ------------------------------------------------------------------ */
+/* macOS-native Settings window styles                                 */
+/* ------------------------------------------------------------------ */
+
+.macos-settings-root {
+  min-height: 100vh;
+  background: #f0f0f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  color: #1d1d1f;
+  overflow: auto;
+}
+
+.text-macos-label {
+  color: #1d1d1f;
+}
+
+.text-macos-secondary {
+  color: #86868b;
+}
+
+/* Toolbar drag area */
+.macos-toolbar {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.macos-toolbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+/* Grouped settings (System Preferences style) */
+.macos-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.macos-legend {
+  font-size: 11px;
+  font-weight: 600;
+  color: #86868b;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0 0 6px 2px;
+}
+
+.macos-field-group {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 0 14px;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.04),
+              0 1px 2px rgba(0, 0, 0, 0.03);
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+
+.macos-separator {
+  height: 0.5px;
+  background: rgba(0, 0, 0, 0.09);
+  margin: 0 -2px;
+}
+
+/* Native-looking select */
+.macos-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #ffffff;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 3px 24px 3px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  color: #1d1d1f;
+  cursor: pointer;
+  outline: none;
+  min-width: 150px;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='5' viewBox='0 0 8 5' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L4 4L7 1' stroke='%2386868b' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.06);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.macos-select:hover {
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+.macos-select:focus {
+  border-color: #0071e3;
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.2);
+}
+
+/* Preview key caps */
+.macos-preview-key {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  color: #1d1d1f;
+}
+
+/* Secondary button */
+.macos-button-secondary {
+  font-size: 13px;
+  font-family: inherit;
+  padding: 4px 14px;
+  border-radius: 6px;
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
+  background: #ffffff;
+  color: #1d1d1f;
+  cursor: pointer;
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.06);
+  transition: background 0.1s, box-shadow 0.1s;
+}
+
+.macos-button-secondary:hover:not(:disabled) {
+  background: #f5f5f7;
+}
+
+.macos-button-secondary:active:not(:disabled) {
+  background: #e8e8ed;
+}
+
+.macos-button-secondary:disabled {
+  color: #c7c7cc;
+  cursor: default;
+  box-shadow: none;
+}
