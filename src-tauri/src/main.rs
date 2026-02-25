@@ -391,6 +391,11 @@ unsafe fn prompt_accessibility_permissions() -> bool {
     trusted
 }
 
+/// Check Accessibility trust status WITHOUT opening System Settings.
+unsafe fn is_accessibility_trusted() -> bool {
+    AXIsProcessTrustedWithOptions(std::ptr::null())
+}
+
 #[link(name = "AppKit", kind = "framework")]
 extern "C" {}
 
@@ -697,12 +702,13 @@ fn main() {
         .setup(|app| {
             // Prompt for Accessibility permissions (required for CGEventTap
             // and AXUIElement APIs used by key listening and Follow Text Input).
-            // On first launch this opens the macOS system dialog.
+            // Only prompt (open System Settings) once — on first launch when
+            // the app is not yet trusted. Subsequent launches check silently.
             #[cfg(target_os = "macos")]
             unsafe {
-                let trusted = prompt_accessibility_permissions();
-                if !trusted {
-                    eprintln!("keyglance: Accessibility permissions not yet granted – some features will be unavailable until the user allows access in System Settings.");
+                if !is_accessibility_trusted() {
+                    // Open System Settings once to guide the user
+                    prompt_accessibility_permissions();
                 }
             }
 
@@ -951,10 +957,30 @@ fn main() {
             // Listener thread – sets up a CGEventTap on its own run loop.
             // Only reads the virtual key code (an integer); no TSM / keyboard
             // layout APIs are called, so it's safe on any thread.
-            // Retries every 2 seconds until Accessibility permissions are granted.
+            //
+            // On macOS 10.15+, CGEventTapCreate can succeed even without
+            // Accessibility permission, but the tap silently receives no events.
+            // To avoid this, we wait until the app is actually trusted before
+            // creating the tap.
+            let listener_handle = app.handle().clone();
             thread::spawn(move || unsafe {
                 // Leak the sender so it lives as long as the thread.
                 let tx_ptr = Box::into_raw(Box::new(tx));
+
+                // Wait until Accessibility permission is granted.
+                // CGEventTapCreate can return a valid handle even without
+                // permission, but the tap won't receive any events.
+                let mut notified = false;
+                while !is_accessibility_trusted() {
+                    if !notified {
+                        let _ = listener_handle.emit("accessibility-missing", true);
+                        notified = true;
+                    }
+                    thread::sleep(std::time::Duration::from_secs(1));
+                }
+                if notified {
+                    let _ = listener_handle.emit("accessibility-granted", true);
+                }
 
                 let tap = loop {
                     let t = CGEventTapCreate(
@@ -968,7 +994,7 @@ fn main() {
                     if !t.is_null() {
                         break t;
                     }
-                    eprintln!("keyglance: waiting for Accessibility permissions to create CGEventTap…");
+                    eprintln!("keyglance: CGEventTapCreate returned NULL, retrying…");
                     thread::sleep(std::time::Duration::from_secs(2));
                 };
 
