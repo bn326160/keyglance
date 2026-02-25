@@ -1,11 +1,15 @@
 {
   "name": "keyglance",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "scripts": {
-    "dev": "npm run tauri dev",
-    "build": "npx tauri build",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "live-preview": "npm run tauri dev",
+    "build-release": "npx tauri build",
     "reset-macos-accessibility": "tccutil reset Accessibility com.brambeirens.keyglance"
   },
   "dependencies": {
