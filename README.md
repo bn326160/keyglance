@@ -23,20 +23,10 @@
 
 ## Screenshots
 
-**Active**
-
 <p>
   <img src="docs/active.png" alt="Normal view — active" width="480" />
   &nbsp;&nbsp;
   <img src="docs/compact-active.png" alt="Compact view — active" width="340" />
-</p>
-
-**Idle**
-
-<p>
-  <img src="docs/inactive.png" alt="Normal view — idle" width="480" />
-  &nbsp;&nbsp;
-  <img src="docs/compact-inactive.png" alt="Compact view — idle" width="340" />
 </p>
 
 ## Features
